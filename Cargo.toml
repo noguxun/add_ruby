@@ -1,5 +1,5 @@
 [package]
-name = "fastly-template-rust-default"
+name = "add-ruby"
 version = "0.1.0"
 authors = []
 edition = "2018"
@@ -8,4 +8,9 @@ edition = "2018"
 debug = true
 
 [dependencies]
+anyhow = "^1.0" 
 fastly = "^0.5.0"
+log = "^0.4"
+log-fastly = "^0.1"
+serde = "^1.0"
+serde_json = "^1.0"

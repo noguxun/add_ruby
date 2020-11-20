@@ -1,30 +1,28 @@
-//! Default Compute@Edge template program.
-
-use fastly::http::{HeaderValue, Method, StatusCode};
+use anyhow::{anyhow, Result};
+use fastly::http::{header, HeaderValue, Method, StatusCode};
 use fastly::request::CacheOverride;
 use fastly::{Body, Error, Request, RequestExt, Response, ResponseExt};
+use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 
-/// The name of a backend server associated with this service.
-///
-/// This should be changed to match the name of your own backend. See the the `Hosts` section of
-/// the Fastly WASM service UI for more information.
-const BACKEND_NAME: &str = "backend_name";
+const BACKEND_NAME: &str = "labs.goo.ne.jp";
 
-/// The name of a second backend associated with this service.
-const OTHER_BACKEND_NAME: &str = "other_backend_name";
+#[derive(Serialize, Deserialize)]
+struct HiraganaResp {
+    converted: String,
+    output_type: String,
+    request_id: String,
+}
 
-/// The entry point for your application.
-///
-/// This function is triggered when your service receives a client request. It could be used to
-/// route based on the request properties (such as method or path), send the request to a backend,
-/// make completely new requests, and/or generate synthetic responses.
-///
-/// If `main` returns an error, a 500 error response will be delivered to the client.
+struct HtmlPart {
+    content: String,
+    need_ruby: bool,
+}
+
 #[fastly::main]
-fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
-    // Make any desired changes to the client request.
-    req.headers_mut()
-        .insert("Host", HeaderValue::from_static("example.com"));
+fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
+    log_fastly::init_simple("my_log", log::LevelFilter::Info);
+    fastly::log::set_panic_endpoint("my_log").unwrap();
 
     // We can filter requests that have unexpected methods.
     const VALID_METHODS: [Method; 3] = [Method::HEAD, Method::GET, Method::POST];
@@ -37,24 +35,18 @@ fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
     // Pattern match on the request method and path.
     match (req.method(), req.uri().path()) {
         // If request is a `GET` to the `/` path, send a default response.
-        (&Method::GET, "/") => Ok(Response::builder()
+        (&Method::GET, "/welcome") => Ok(Response::builder()
             .status(StatusCode::OK)
             .body(Body::from("Welcome to Fastly Compute@Edge!"))?),
 
         // If request is a `GET` to the `/backend` path, send to a named backend.
-        (&Method::GET, "/backend") => {
-            // Request handling logic could go here...
-            // E.g., send the request to an origin backend and then cache the
-            // response for one minute.
-            *req.cache_override_mut() = CacheOverride::ttl(60);
-            Ok(req.send(BACKEND_NAME)?)
-        }
-
-        // If request is a `GET` to a path starting with `/other/`.
-        (&Method::GET, path) if path.starts_with("/other/") => {
-            // Send request to a different backend and don't cache response.
-            *req.cache_override_mut() = CacheOverride::Pass;
-            Ok(req.send(OTHER_BACKEND_NAME)?)
+        (&Method::GET, "/test1") => {
+            let html_parts = generate_sample_html_parts();
+            let coverted = generate_html_with_ruby(&html_parts)?;
+            
+            Ok(Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from(coverted))?)
         }
 
         // Catch all other requests and return a 404.
@@ -62,4 +54,72 @@ fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("The page you requested could not be found"))?),
     }
+}
+
+fn generate_sample_html_parts() -> Vec<HtmlPart> {
+    let mut parts = Vec::<HtmlPart>::new();
+
+    parts.push(HtmlPart {
+        content: String::from("<html>"),
+        need_ruby: false,
+    });
+
+    parts.push(HtmlPart {
+        content: String::from("日本語が難しいですよ"),
+        need_ruby: true,
+    });
+
+    parts.push(HtmlPart {
+        content: String::from("</html>"),
+        need_ruby: false,
+    });
+
+    parts
+}
+
+fn generate_html_with_ruby(parts: &Vec<HtmlPart>) -> Result<String>{
+    let mut html_page = String::new();
+    for part in parts {
+        if part.need_ruby {
+            let hiragana = get_hiragana(&part.content)?;
+            write!(&mut html_page, "<ruby><rb>{}</rb><rt>{}</rt></ruby>", part.content, hiragana);
+        }
+        else {
+            write!(&mut html_page, "{}", part.content);
+        }
+    }
+
+    Ok(html_page)
+}
+
+fn get_hiragana(j: &str) -> Result<String> {
+    let app_id = "57612e6db386dded03ab099ac9afa1276ea7f20f78528b8a5a0717e0e99b69e2";
+    let req_body = format!(
+        r#"{{
+      "app_id": "{}",
+      "request_id": "test1",
+      "sentence": "{}",
+      "output_type": "hiragana"
+    }}"#,
+        app_id, j
+    );
+
+    log::info!("{}", &req_body);
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .uri("https://labs.goo.ne.jp/api/hiragana")
+        .body(Body::from(req_body))?;
+
+    let resp = req.send(BACKEND_NAME)?;
+
+    let (_parts, body) = resp.into_parts();
+    let body_str = body.into_string();
+
+    log::info!("{}", &body_str);
+
+    let hiragana_resp: HiraganaResp = serde_json::from_str(&body_str)?;
+
+    Ok(hiragana_resp.converted)
 }
