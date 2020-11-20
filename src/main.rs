@@ -1,6 +1,5 @@
-use anyhow::{anyhow, Result};
-use fastly::http::{header, HeaderValue, Method, StatusCode};
-use fastly::request::CacheOverride;
+use anyhow::Result;
+use fastly::http::{header, Method, StatusCode};
 use fastly::{Body, Error, Request, RequestExt, Response, ResponseExt};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -43,10 +42,10 @@ fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
         (&Method::GET, "/test1") => {
             let html_parts = generate_sample_html_parts();
             let coverted = generate_html_with_ruby(&html_parts)?;
-            
+
             Ok(Response::builder()
-            .status(StatusCode::OK)
-            .body(Body::from(coverted))?)
+                .status(StatusCode::OK)
+                .body(Body::from(coverted))?)
         }
 
         // Catch all other requests and return a 404.
@@ -77,15 +76,18 @@ fn generate_sample_html_parts() -> Vec<HtmlPart> {
     parts
 }
 
-fn generate_html_with_ruby(parts: &Vec<HtmlPart>) -> Result<String>{
+fn generate_html_with_ruby(parts: &Vec<HtmlPart>) -> Result<String> {
     let mut html_page = String::new();
     for part in parts {
         if part.need_ruby {
             let hiragana = get_hiragana(&part.content)?;
-            write!(&mut html_page, "<ruby><rb>{}</rb><rt>{}</rt></ruby>", part.content, hiragana);
-        }
-        else {
-            write!(&mut html_page, "{}", part.content);
+            write!(
+                &mut html_page,
+                "<ruby><rb>{}</rb><rt>{}</rt></ruby>",
+                part.content, hiragana
+            )?;
+        } else {
+            write!(&mut html_page, "{}", part.content)?;
         }
     }
 
