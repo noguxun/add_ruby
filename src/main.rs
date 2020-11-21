@@ -59,7 +59,7 @@ fn generate_sample_html_parts() -> Vec<HtmlPart> {
     let mut parts = Vec::<HtmlPart>::new();
 
     parts.push(HtmlPart {
-        content: String::from("<html>"),
+        content: String::from("<html><head><meta charset=\"UTF-8\"></head>"),
         need_ruby: false,
     });
 
