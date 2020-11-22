@@ -9,6 +9,7 @@ use kanji::{is_kanji, is_hiragana};
 
 const BACKEND_NAME: &str = "labs.goo.ne.jp";
 const CONTENT_BACKEND: &str = "www.fastly.jp";
+const LOG: &str = "PaperTrail";
 
 #[derive(Serialize, Deserialize)]
 struct HiraganaResp {
@@ -25,7 +26,9 @@ struct HtmlPart {
 #[fastly::main]
 fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
     log_fastly::init_simple("my_log", log::LevelFilter::Info);
-    fastly::log::set_panic_endpoint("my_log").unwrap();
+    log_fastly::init_simple(LOG, log::LevelFilter::Debug);
+//    fastly::log::set_panic_endpoint("my_log").unwrap();
+    fastly::log::set_panic_endpoint(LOG).unwrap();
 
     // We can filter requests that have unexpected methods.
     const VALID_METHODS: [Method; 3] = [Method::HEAD, Method::GET, Method::POST];
@@ -41,8 +44,8 @@ fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
 
 
     *req.cache_override_mut() = CacheOverride::ttl(60);
-    log::info!("time: {},url: {}", Utc::now(), req.uri());
-    let resp = req.send(BACKEND_NAME)?;
+    log::debug!("time: {},url: {}", Utc::now(), req.uri());
+    let resp = req.send(CONTENT_BACKEND)?;
     if resp.status() == StatusCode::OK {
         let body_string = resp.into_body().into_string();
         let html_parts = analyze_jp(body_string);

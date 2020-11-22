@@ -1,4 +1,4 @@
-version = 12
+version = 19
 name = "add_ruby"
 description = "Get to know the Fastly Compute@Edge environment with a basic starter that demonstrates routing, simple synthetic responses and overriding caching rules."
 authors = ["xgu+ecp@fastly.com"]
