@@ -1,10 +1,14 @@
+use chrono::Utc;
 use anyhow::Result;
-use fastly::http::{header, Method, StatusCode};
+use fastly::http::{HeaderValue, header, Method, StatusCode};
 use fastly::{Body, Error, Request, RequestExt, Response, ResponseExt};
+use fastly::request::CacheOverride;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
+use kanji::{is_kanji, is_hiragana};
 
 const BACKEND_NAME: &str = "labs.goo.ne.jp";
+const CONTENT_BACKEND: &str = "www.fastly.jp";
 
 #[derive(Serialize, Deserialize)]
 struct HiraganaResp {
@@ -19,7 +23,7 @@ struct HtmlPart {
 }
 
 #[fastly::main]
-fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
+fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
     log_fastly::init_simple("my_log", log::LevelFilter::Info);
     fastly::log::set_panic_endpoint("my_log").unwrap();
 
@@ -31,28 +35,106 @@ fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
             .body(Body::from("This method is not allowed"))?);
     }
 
-    // Pattern match on the request method and path.
-    match (req.method(), req.uri().path()) {
-        // If request is a `GET` to the `/` path, send a default response.
-        (&Method::GET, "/welcome") => Ok(Response::builder()
+    // Make any desired changes to the client request.
+    req.headers_mut()
+        .insert("Host", HeaderValue::from_static(CONTENT_BACKEND));
+
+
+    *req.cache_override_mut() = CacheOverride::ttl(60);
+    log::info!("time: {},url: {}", Utc::now(), req.uri());
+    let resp = req.send(BACKEND_NAME)?;
+    if resp.status() == StatusCode::OK {
+        let body_string = resp.into_body().into_string();
+        let html_parts = analyze_jp(body_string);
+        let coverted = generate_html_with_ruby(&html_parts)?;
+        return  Ok(Response::builder()
             .status(StatusCode::OK)
-            .body(Body::from("Welcome to Fastly Compute@Edge!"))?),
-
-        // If request is a `GET` to the `/backend` path, send to a named backend.
-        (&Method::GET, "/test1") => {
-            let html_parts = generate_sample_html_parts();
-            let coverted = generate_html_with_ruby(&html_parts)?;
-
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .body(Body::from(coverted))?)
-        }
-
-        // Catch all other requests and return a 404.
-        _ => Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Body::from("The page you requested could not be found"))?),
+            .body(Body::from(coverted))?)
     }
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from("Welcome to Fastly Compute@Edge!"))?)
+ 
+}
+
+fn analyze_jp(body_string: String) -> Vec<HtmlPart> {
+    let chars_num = body_string.as_str().chars().count();
+    let html_chars = body_string.as_str().chars().collect::<Vec<char>>();
+    let mut i = 0;
+    let mut html_parts = Vec::new();
+    let mut content = "".to_string();
+    while i < chars_num {
+        let mut char = html_chars[i];
+        if char != '>' {
+            content.push(char);
+            i += 1;
+            continue;
+        }
+        if char == '>' {
+            loop {
+                char = html_chars[i];
+                let mut next_char;
+                if i + 1 < chars_num {
+                    next_char = html_chars[i + 1]
+                } else {
+                    content.push(char);
+                    let html_part = HtmlPart {
+                        content: content.clone(),
+                        need_ruby: false,
+                    };
+                    html_parts.push(html_part);
+                    break;
+                }
+                if next_char == '<' {
+                    if !is_kanji(&char) && !is_hiragana(&char) {
+                        content.push(char);
+                        i += 1;
+                        break;
+                    } else {
+                        content.push(char);
+                        i += 1;
+                        let html_part = HtmlPart {
+                            content: content,
+                            need_ruby: true,
+                        };
+                        html_parts.push(html_part);
+                        content = "".to_string();
+                        break;
+                    }
+                }
+                if !is_kanji(&next_char) && !is_hiragana(&next_char) {
+                    if !is_kanji(&char) && !is_hiragana(&char) {
+                        content.push(char);
+                        i += 1;
+                    } else {
+                        content.push(char);
+                        i += 1;
+                        let html_part = HtmlPart {
+                            content: content,
+                            need_ruby: true,
+                        };
+                        html_parts.push(html_part);
+                        content = "".to_string();
+                    }
+                } else {
+                    if !is_kanji(&char) && !is_hiragana(&char) {
+                        content.push(char);
+                        i += 1;
+                        let html_part = HtmlPart {
+                            content: content,
+                            need_ruby: false,
+                        };
+                        html_parts.push(html_part);
+                        content = "".to_string();
+                    } else {
+                        content.push(char);
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+    return html_parts;
 }
 
 fn generate_sample_html_parts() -> Vec<HtmlPart> {
