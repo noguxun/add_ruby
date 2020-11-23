@@ -53,7 +53,7 @@ fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
     log::info!("time: {},url: {}", Utc::now(), req.uri());
     let mut resp = req.send(BACKEND_NAME)?;
     if resp.status() == StatusCode::MOVED_PERMANENTLY {
-        let re = Regex::new(r"https?://www\.fastly\.jp(/[a-zA-z0-9@:%._\+~#=/]*$)").unwrap();
+        let re = Regex::new(r"https?://www\.fastly\.jp/.*$").unwrap();
         let location = resp.headers().get(LOCATION).unwrap().to_str().unwrap();
         if re.is_match(location) {
             let req = Request::get(location).body(()).unwrap();
