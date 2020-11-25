@@ -3,7 +3,7 @@ use chrono::Utc;
 use fastly::http::{header, HeaderValue, Method, StatusCode};
 use fastly::{dictionary::Dictionary, Body, Error, Request, RequestExt, Response, ResponseExt};
 use http::header::{ACCEPT_ENCODING, CONTENT_TYPE, LOCATION};
-use kanji::{is_hiragana, is_kanji};
+use kanji::{is_hiragana, is_kanji, is_katakana};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -100,7 +100,7 @@ fn analyze_jp(body_string: &str) -> (Vec<HtmlPart>, String) {
                     break;
                 }
                 if next_char == '<' {
-                    if !is_kanji(&ch) && !is_hiragana(&ch) {
+                    if !is_kanji(&ch) && !is_hiragana(&ch) && !is_katakana(&ch) {
                         content.push(ch);
                         i += 1;
                         break;
@@ -119,8 +119,8 @@ fn analyze_jp(body_string: &str) -> (Vec<HtmlPart>, String) {
                         break;
                     }
                 }
-                if !is_kanji(&next_char) && !is_hiragana(&next_char) {
-                    if !is_kanji(&ch) && !is_hiragana(&ch) {
+                if !is_kanji(&next_char) && !is_hiragana(&next_char) && !is_katakana(&next_char) {
+                    if !is_kanji(&ch) && !is_hiragana(&ch) && !is_katakana(&ch) {
                         content.push(ch);
                         i += 1;
                     } else {
@@ -137,7 +137,7 @@ fn analyze_jp(body_string: &str) -> (Vec<HtmlPart>, String) {
                         content = "".to_string();
                     }
                 } else {
-                    if !is_kanji(&ch) && !is_hiragana(&ch) {
+                    if !is_kanji(&ch) && !is_hiragana(&ch) && !is_katakana(&ch) {
                         content.push(ch);
                         i += 1;
                         let html_part = HtmlPart {
