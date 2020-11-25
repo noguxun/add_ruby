@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::Utc;
 use fastly::http::{header, HeaderValue, Method, StatusCode};
 use fastly::request::CacheOverride;
-use fastly::{Body, Error, Request, RequestExt, Response, ResponseExt};
+use fastly::{dictionary::Dictionary, Body, Error, Request, RequestExt, Response, ResponseExt};
 use http::header::{ACCEPT_ENCODING, CONTENT_TYPE, LOCATION};
 use kanji::{is_hiragana, is_kanji};
 use regex::Regex;
@@ -182,10 +182,12 @@ fn generate_html_with_ruby(parts: &Vec<HtmlPart>, jp_content: String) -> Result<
 }
 
 fn get_hiragana(j: &str) -> Result<String> {
-    let app_id = "57612e6db386dded03ab099ac9afa1276ea7f20f78528b8a5a0717e0e99b69e2";
+    let api_config = Dictionary::open("api_config");
+    let app_id = api_config.get("api_id").unwrap();
+    let output_type = api_config.get("output_type").unwrap();
     let req_body = format!(
-        r#"{{"app_id": "{}","sentence": "{}","output_type": "hiragana"}}"#,
-        app_id, j
+        r#"{{"app_id": "{}","sentence": "{}","output_type": "{}"}}"#,
+        app_id, j, output_type
     );
 
     log::info!("{}", &req_body);
